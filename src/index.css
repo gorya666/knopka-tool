@@ -1,60 +1,103 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Maple Mono font ─────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   FONTS
+   Files go in /public/fonts/ — see README for download links.
+   font-display: swap prevents invisible text while fonts load.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Maple Mono — Regular (400) */
 @font-face {
   font-family: 'Maple';
-  src: url('/fonts/MapleMono-Regular.woff2') format('woff2');
+  src: local('MapleMono-Regular'),
+       local('Maple Mono Regular'),
+       local('Maple Mono'),
+       url('/fonts/MapleMono-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 
+/* Maple Mono — Medium (500) */
 @font-face {
   font-family: 'Maple';
-  src: url('/fonts/MapleMono-Bold.woff2') format('woff2');
+  src: local('MapleMono-Medium'),
+       local('Maple Mono Medium'),
+       url('/fonts/MapleMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Maple Mono — Bold (700) */
+@font-face {
+  font-family: 'Maple';
+  src: local('MapleMono-Bold'),
+       local('Maple Mono Bold'),
+       url('/fonts/MapleMono-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
+  font-display: swap;
 }
 
-@font-face {
-  font-family: 'Maple';
-  src: url('/fonts/MapleMono-Italic.woff2') format('woff2');
-  font-weight: 400;
-  font-style: italic;
-}
-
-/* ── Nerd Font (symbols only) ────────────────────────────────────── */
+/* Nerd Fonts Symbols Only — for icons (installed at /Library/Fonts/Nerd Fonts Symbols Only/) */
 @font-face {
   font-family: 'NerdFontsSymbolsOnly';
-  src: url('/fonts/SymbolsNerdFontsMonoMono-Regular.woff2') format('woff2');
+  src: local('SymbolsNerdFontMono-Regular'),
+       local('Symbols Nerd Font Mono'),
+       url('/fonts/SymbolsNerdFontMono-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
+  font-display: block; /* icons should not swap/flash */
 }
 
-/* ── Nerd icon utility class ─────────────────────────────────────── */
-.nerd-icon {
-  font-family: 'NerdFontsSymbolsOnly', monospace;
+/* ─────────────────────────────────────────────────────────────────────────────
+   FONT STACKS
+   Single family everywhere. Fallback chain for before font files load.
+───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --font-maple: 'Maple', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
 }
 
-/* ── Base theme ──────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   TYPE SCALE — fixed rem, app UI (impeccable rules)
+   5 steps, 1.25× ratio. Weights: 400 body / 500 labels / 700 headings.
+   No italic. No decorative variants.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Step 1 — captions, tags, uppercase labels  */
+/* 0.6875rem / 11px  */
+
+/* Step 2 — metadata, secondary text          */
+/* 0.75rem / 12px    */
+
+/* Step 3 — primary body (default)            */
+/* 0.875rem / 14px   */
+
+/* Step 4 — subheadings, strong labels        */
+/* 1rem / 16px       */
+
+/* Step 5 — main headings                     */
+/* 1.25rem / 20px    */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TAILWIND THEME OVERRIDE
+   Maps Tailwind's font-sans and font-mono to Maple everywhere.
+───────────────────────────────────────────────────────────────────────────── */
+
 @theme {
-  --font-sans: 'Maple', sans-serif;
-  --font-mono: 'Maple', monospace;
-}
-
-body {
-  background: #0f0f0f;
-  color: #f0f0f0;
-  font-family: 'Maple', sans-serif;
+  --font-sans: var(--font-maple);
+  --font-mono: var(--font-maple);
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-heading: var(--font-maple);
+  --font-sans: var(--font-maple);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -81,7 +124,7 @@ body {
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
   --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
+  --color-popover: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-foreground: var(--foreground);
@@ -95,83 +138,105 @@ body {
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   SHADCN COLOR TOKENS
+───────────────────────────────────────────────────────────────────────────── */
+
 :root {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.09 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.09 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.09 0 0);
+  --primary: oklch(0.09 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.96 0 0);
+  --secondary-foreground: oklch(0.09 0 0);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.96 0 0);
+  --accent-foreground: oklch(0.09 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0.09 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.09 0 0);
+  --sidebar-primary: oklch(0.09 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-accent: oklch(0.96 0 0);
+  --sidebar-accent-foreground: oklch(0.09 0 0);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-ring: oklch(0.45 0 0);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
+/* ─────────────────────────────────────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    font-style: normal !important; /* no italic anywhere */
+  }
+  html {
+    font-family: var(--font-maple);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-kerning: normal;
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-maple);
+    font-size: 0.875rem;   /* 14px — body default */
+    line-height: 1.6;
+    font-weight: 400;
+    text-wrap: pretty;     /* avoid orphaned words in body text */
   }
-  html {
-    @apply font-sans;
+  h1, h2, h3, h4, h5, h6 {
+    text-wrap: balance;    /* even line lengths on short headings */
+  }
+  p {
+    text-wrap: pretty;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   NERD ICON UTILITY
+───────────────────────────────────────────────────────────────────────────── */
+
+.nerd-icon {
+  font-family: 'NerdFontsSymbolsOnly', var(--font-maple);
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ANIMATIONS
+───────────────────────────────────────────────────────────────────────────── */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes progressBar {
+  from { width: 0%; }
+  to   { width: 85%; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-fade-up              { animation: fadeUp 350ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.animate-fade-up-delay-1      { animation: fadeUp 350ms cubic-bezier(0.34, 1.56, 0.64, 1) 60ms both; }
+.animate-fade-up-delay-2      { animation: fadeUp 350ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both; }
+.animate-fade-up-delay-3      { animation: fadeUp 350ms cubic-bezier(0.34, 1.56, 0.64, 1) 180ms both; }
+.animate-fade-up-delay-4      { animation: fadeUp 350ms cubic-bezier(0.34, 1.56, 0.64, 1) 240ms both; }
+.animate-progress-bar         { animation: progressBar 22s cubic-bezier(0.1, 0, 0.2, 1) forwards; }
+.animate-fade-in              { animation: fadeIn 400ms ease both; }

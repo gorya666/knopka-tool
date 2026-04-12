@@ -44,6 +44,18 @@ src/
 3. **analyzing** — API call in progress, show LoadingState
 4. **done** — show ResultsPanel with all outputs
 
+## Design
+See .claude/skills/design-direction.md — follow it for ALL UI work.
+Summary: white theme, Luma-inspired, black + lime #E1FD02 accent, max 680px wide,
+rounded cards, subtle shadows, Emil Kowalski animations, spacious layout.
+
+Typography rules (always enforced):
+- ALL UI text is lowercase — no uppercase, no title case, no sentence case
+- Exception: Claude's output content (titles, social posts) keeps normal capitalisation
+- No italic anywhere — `font-style: normal !important` is set globally
+- No `uppercase` or `tracking-widest` CSS classes — removed from codebase
+- Single font: Maple Mono for everything (body, headings, labels, mono)
+
 ## Coding conventions
 - Named exports everywhere (no default exports except App.tsx)
 - TypeScript strict mode — no `any`
@@ -53,6 +65,37 @@ src/
 - Nerd Font icons: use unicode directly in JSX, e.g. `<span>󰉒</span>`
 - Every output field must have a copy-to-clipboard button
 - Copy feedback: button text changes to "Скопійовано!" for 2 seconds
+
+## Architecture: Clean Architecture principles
+Follow "Clean Architecture" (Robert C. Martin) at all times.
+
+The key rule: **inner layers never depend on outer layers.**
+
+Our layers, from innermost to outermost:
+
+1. **Entities** — `src/types/podcast.ts`
+   Pure data shapes and business rules. No React, no fetch, no DOM.
+   Example: `AnalysisResult`, `Chapter`, `Clip` — these are just data.
+
+2. **Use Cases** — `src/hooks/useAnalyze.ts`, `src/hooks/useTranscript.ts`
+   Application logic: "what does the app do?" No UI imports here.
+   Hooks can use browser APIs (fetch, FileReader) but not components.
+
+3. **Interface Adapters** — `src/lib/parser.ts`, `src/lib/prompt.ts`
+   Translate between the outside world (Claude API, raw file text) and
+   our inner types. No React, no Tailwind here.
+
+4. **Frameworks & UI** — `src/components/`, `App.tsx`
+   The outermost layer. Can import everything. React, Tailwind, shadcn.
+   Components are dumb — they receive data and call callbacks; they don't
+   contain business logic.
+
+Practical rules:
+- A component must NEVER call `fetch` directly — that belongs in a hook.
+- A hook must NEVER import a component.
+- `types/podcast.ts` must NEVER import from hooks, components, or lib.
+- If you're unsure where code belongs: push it inward as far as it still makes sense.
+- Single Responsibility: each file does one thing well.
 
 ## What NOT to do
 - Do not edit src/lib/prompt.ts without explicitly asking first
