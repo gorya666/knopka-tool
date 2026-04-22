@@ -112,14 +112,26 @@ export const COMMANDS_BY_FIELD: Record<string, QuickCommand[]> = {
 };
 
 export const COMMAND_LABELS: Record<QuickCommand, string> = {
-  more_provocative: '🔥 Провокативніше',
-  shorter:          '✂️ Коротше',
-  more_specific:    '🎯 Конкретніше',
-  expand:           '📝 Розширити',
-  more_casual:      '💬 Розмовніше',
-  stronger_hook:    '🪝 Сильніший хук',
-  different_angle:  '🔄 Інший кут',
-  regenerate:       '↺ Переписати',
+  more_provocative: 'провокативніше',
+  shorter:          'коротше',
+  more_specific:    'конкретніше',
+  expand:           'розширити',
+  more_casual:      'розмовніше',
+  stronger_hook:    'сильніший хук',
+  different_angle:  'інший кут',
+  regenerate:       'переписати',
+}
+
+// Nerd Font icons for each command (Font Awesome range, via Symbols Nerd Font)
+export const COMMAND_ICONS: Record<QuickCommand, string> = {
+  more_provocative: '\uf06d', // fa-fire
+  shorter:          '\uf0c4', // fa-scissors
+  more_specific:    '\uf192', // fa-dot-circle
+  expand:           '\uf0fe', // fa-plus-square
+  more_casual:      '\uf086', // fa-comments
+  stronger_hook:    '\uf0e7', // fa-bolt
+  different_angle:  '\uf021', // fa-refresh
+  regenerate:       '\uf01e', // fa-repeat
 };
 
 // ─── App state machine ────────────────────────────────────────────────────────
@@ -127,7 +139,7 @@ export const COMMAND_LABELS: Record<QuickCommand, string> = {
 export type AppState =
   | { status: 'empty' }
   | { status: 'loaded'; transcript: string; fileName: string }
-  | { status: 'analyzing'; transcript: string; fileName: string }
+  | { status: 'analyzing'; transcript: string; fileName: string; streamingText: string }
   | { status: 'done'; transcript: string; fileName: string; result: VersionedResult }
   | { status: 'error'; message: string };
 

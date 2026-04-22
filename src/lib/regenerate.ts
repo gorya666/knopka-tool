@@ -3,7 +3,7 @@
 // a prompt asking Claude for a fresh alternative.
 // All regeneration calls return a small focused JSON — not the full schema.
 
-import type { RegenerableField } from '../types/podcast';
+type RegenerableField = 'titles' | 'showNotes' | 'clips' | 'social.telegram' | 'social.linkedin' | 'social.instagram' | 'social.tiktok';
 
 // How many new options to generate per field
 const REGEN_COUNT: Record<RegenerableField, number> = {

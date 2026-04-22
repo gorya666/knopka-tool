@@ -16,14 +16,51 @@ const COMMAND_INSTRUCTIONS: Record<QuickCommand, string> = {
   regenerate:       'Повністю перепиши з нуля. Інший підхід, інші формулювання.',
 };
 
+const TRANSCRIPT_LIMIT = 8000
+
+function transcriptBlock(transcript: string): string {
+  const trimmed = transcript.slice(0, TRANSCRIPT_LIMIT)
+  const suffix = transcript.length > TRANSCRIPT_LIMIT ? '\n\n[транскрипт скорочено]' : ''
+  return `## Транскрипт епізоду\n${trimmed}${suffix}`
+}
+
+export function buildCustomFieldPrompt(
+  fieldName: string,
+  currentValue: string,
+  customInstruction: string,
+  transcript: string,
+): string {
+  return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
+
+${transcriptBlock(transcript)}
+
+Поточний варіант поля "${fieldName}":
+---
+${currentValue}
+---
+
+Завдання від користувача: ${customInstruction}
+
+Правила:
+- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
+- Зберігай стиль Радіо Кнопки: розмовний, розумний, без корпоративщини
+- Мова: українська (можна міксувати з англійськими термінами як у дизайн-середовищі)
+- Повертай ТІЛЬКИ новий текст для цього поля — без пояснень, без преамбули, без лапок навколо
+
+Новий варіант:`
+}
+
 export function buildFieldPrompt(
   fieldName: string,
   currentValue: string,
   command: QuickCommand,
+  transcript: string,
 ): string {
   const instruction = COMMAND_INSTRUCTIONS[command];
 
   return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
+
+${transcriptBlock(transcript)}
 
 Поточний варіант поля "${fieldName}":
 ---
@@ -33,6 +70,7 @@ ${currentValue}
 Завдання: ${instruction}
 
 Правила:
+- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
 - Зберігай стиль Радіо Кнопки: розмовний, розумний, без корпоративщини
 - Мова: українська (можна міксувати з англійськими термінами як у дизайн-середовищі)
 - Повертай ТІЛЬКИ новий текст для цього поля — без пояснень, без преамбули, без лапок навколо
@@ -43,11 +81,14 @@ ${currentValue}
 export function buildTitlesRegeneratePrompt(
   currentTitles: string[],
   command: QuickCommand,
+  transcript: string,
 ): string {
   const instruction = COMMAND_INSTRUCTIONS[command];
   const titlesText = currentTitles.map((t, i) => `${i + 1}. ${t}`).join('\n');
 
   return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
+
+${transcriptBlock(transcript)}
 
 Поточні варіанти назв:
 ${titlesText}
@@ -55,6 +96,7 @@ ${titlesText}
 Завдання: ${instruction}
 
 Правила:
+- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
 - Стиль: або провокативне твердження/питання, або "Тема · Ім'я Гостя" для гостьових епізодів
 - До 65 символів
 - Без clickbait — назва відображає реальний зміст
