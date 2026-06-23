@@ -1,6 +1,6 @@
 // Shared field regeneration logic — used by useAnalyze and EpisodeView.
 
-import { buildFieldPrompt, buildTitlesRegeneratePrompt, buildCustomFieldPrompt } from './regen-prompt'
+import { buildFieldPrompt, buildTitlesRegeneratePrompt, buildCustomFieldPrompt, buildTakeawayRegeneratePrompt } from './regen-prompt'
 import { callClaude, callClaudeStreaming, extractJSON } from './claude-api'
 import {
   type RegeneratingField,
@@ -8,12 +8,22 @@ import {
   type VersionedResult,
   type Chapter,
   type Clip,
+  type Takeaway,
   addVersion,
   current,
 } from '../types/podcast'
 
 // JSON fields — can't stream because we need the full payload to parse
 const JSON_FIELDS = new Set<NonNullable<RegeneratingField>>(['titles', 'chapters', 'clips'])
+
+// Takeaway index from field key, e.g. 'takeaway_2' → 2
+function takeawayIndex(field: string): number {
+  return parseInt(field.split('_')[1], 10)
+}
+
+function isTakeawayField(field: NonNullable<RegeneratingField>): boolean {
+  return (field as string).startsWith('takeaway_')
+}
 
 // Build the correct prompt for a field and run the API call
 export async function runFieldRegen(
@@ -27,7 +37,16 @@ export async function runFieldRegen(
   const currentValue = getFieldValue(result, fieldKey)
 
   let prompt: string
-  if (customInstruction) {
+  if (isTakeawayField(fieldKey)) {
+    // Takeaways always return a {linkedin, instagram} JSON object — use a dedicated
+    // prompt whether the request is a quick command or a custom instruction.
+    prompt = buildTakeawayRegeneratePrompt(
+      JSON.parse(currentValue) as Takeaway,
+      command,
+      transcript,
+      customInstruction,
+    )
+  } else if (customInstruction) {
     // Use custom instruction directly
     prompt = buildCustomFieldPrompt(fieldKey, currentValue, customInstruction, transcript)
   } else {
@@ -39,7 +58,7 @@ export async function runFieldRegen(
 
   const messages = [{ role: 'user', content: prompt }]
 
-  if (!JSON_FIELDS.has(fieldKey) && onChunk) {
+  if (!JSON_FIELDS.has(fieldKey) && !isTakeawayField(fieldKey) && onChunk) {
     return callClaudeStreaming(messages, undefined, 2000, onChunk)
   }
   return callClaude(messages, undefined, 2000)
@@ -74,6 +93,16 @@ export function applyFieldUpdate(
       return { ...result, social: { ...result.social, instagram: addVersion(result.social.instagram, raw.trim()) } }
     case 'tiktok':
       return { ...result, social: { ...result.social, tiktok: addVersion(result.social.tiktok, raw.trim()) } }
+    default: {
+      if (isTakeawayField(fieldKey)) {
+        const idx = takeawayIndex(fieldKey)
+        const takeaway = JSON.parse(extractJSON(raw)) as Takeaway
+        const next = [...result.takeaways] as typeof result.takeaways
+        next[idx] = addVersion(result.takeaways[idx], takeaway)
+        return { ...result, takeaways: next }
+      }
+      return result
+    }
   }
 }
 
@@ -88,5 +117,8 @@ export function getFieldValue(result: VersionedResult, field: NonNullable<Regene
     case 'linkedin':  return current(result.social.linkedin)
     case 'instagram': return current(result.social.instagram)
     case 'tiktok':    return current(result.social.tiktok)
+    default:
+      if (isTakeawayField(field)) return JSON.stringify(current(result.takeaways[takeawayIndex(field)]))
+      return ''
   }
 }

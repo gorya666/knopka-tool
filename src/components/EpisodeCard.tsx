@@ -24,13 +24,11 @@ export function EpisodeCard({ episode, index, onClick }: EpisodeCardProps) {
           {episode.title}
         </p>
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-sm text-black/60 truncate max-w-[200px]">{episode.fileName}</span>
-          <span className="text-black/20 text-sm">·</span>
           <span className="text-sm text-black/60 shrink-0">{formatSavedAt(episode.savedAt)}</span>
         </div>
       </div>
 
-      <div className="shrink-0 flex items-center justify-center w-6 h-6 rounded bg-black/04 group-hover:bg-black/08 transition-colors duration-150 mt-0.5">
+      <div className="shrink-0 self-center flex items-center justify-center w-6 h-6 rounded bg-black/04 group-hover:bg-black/08 transition-colors duration-150">
         <span className="nerd-icon text-xs text-black/40">{'\uf061'}</span>
       </div>
     </div>

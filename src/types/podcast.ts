@@ -51,13 +51,31 @@ export interface SocialPosts {
   tiktok: string;
 }
 
+// A single key takeaway, available in two formats so the user can switch
+// between a long LinkedIn paragraph (Lenny Rachitsky style) and a short
+// Instagram one-liner.
+export interface Takeaway {
+  linkedin: string;
+  instagram: string;
+}
+
+export type Takeaways = [Takeaway, Takeaway, Takeaway, Takeaway, Takeaway];
+
+export type TakeawayView = 'linkedin' | 'instagram';
+
 export interface AnalysisResult {
   titles: [string, string, string];
   showNotes: string;
   chapters: Chapter[];
   clips: [Clip, Clip, Clip];
   social: SocialPosts;
+  takeaways?: Takeaways;
 }
+
+const EMPTY_TAKEAWAY: Takeaway = { linkedin: '', instagram: '' }
+
+export const EMPTY_TAKEAWAYS: Takeaways =
+  [EMPTY_TAKEAWAY, EMPTY_TAKEAWAY, EMPTY_TAKEAWAY, EMPTY_TAKEAWAY, EMPTY_TAKEAWAY]
 
 // ─── Versioned result ─────────────────────────────────────────────────────────
 
@@ -72,6 +90,13 @@ export interface VersionedResult {
     instagram: FieldHistory<string>;
     tiktok: FieldHistory<string>;
   };
+  takeaways: [
+    FieldHistory<Takeaway>,
+    FieldHistory<Takeaway>,
+    FieldHistory<Takeaway>,
+    FieldHistory<Takeaway>,
+    FieldHistory<Takeaway>,
+  ];
 }
 
 export function toVersionedResult(result: AnalysisResult): VersionedResult {
@@ -86,6 +111,10 @@ export function toVersionedResult(result: AnalysisResult): VersionedResult {
       instagram: createHistory(result.social.instagram),
       tiktok: createHistory(result.social.tiktok),
     },
+    takeaways: (result.takeaways ?? EMPTY_TAKEAWAYS).map(createHistory) as [
+      FieldHistory<Takeaway>, FieldHistory<Takeaway>, FieldHistory<Takeaway>,
+      FieldHistory<Takeaway>, FieldHistory<Takeaway>
+    ],
   };
 }
 
@@ -109,6 +138,7 @@ export const COMMANDS_BY_FIELD: Record<string, QuickCommand[]> = {
   instagram: ['shorter', 'stronger_hook', 'regenerate'],
   tiktok:    ['shorter', 'more_provocative', 'regenerate'],
   clips:     ['regenerate'],
+  takeaway:  ['shorter', 'more_specific', 'more_provocative', 'different_angle', 'regenerate'],
 };
 
 export const COMMAND_LABELS: Record<QuickCommand, string> = {
@@ -134,16 +164,42 @@ export const COMMAND_ICONS: Record<QuickCommand, string> = {
   regenerate:       '\uf01e', // fa-repeat
 };
 
+// ─── Short mode ───────────────────────────────────────────────────────────────
+
+export type AppMode = 'podcast' | 'short'
+
+export const SHORT_THRESHOLD = 5000  // chars — below this auto-suggest short mode
+
+export interface ShortResult {
+  thumbnailTitle: string
+  socialCaption: string
+}
+
+export interface VersionedShortResult {
+  thumbnailTitle: FieldHistory<string>
+  socialCaption: FieldHistory<string>
+}
+
+export function toVersionedShortResult(r: ShortResult): VersionedShortResult {
+  return {
+    thumbnailTitle: createHistory(r.thumbnailTitle),
+    socialCaption:  createHistory(r.socialCaption),
+  }
+}
+
 // ─── App state machine ────────────────────────────────────────────────────────
 
 export type AppState =
   | { status: 'empty' }
-  | { status: 'loaded'; transcript: string; fileName: string }
-  | { status: 'analyzing'; transcript: string; fileName: string; streamingText: string }
-  | { status: 'done'; transcript: string; fileName: string; result: VersionedResult }
+  | { status: 'loaded'; transcript: string; fileName: string; mode: AppMode }
+  | { status: 'analyzing'; transcript: string; fileName: string; mode: AppMode; streamingText: string }
+  | { status: 'done'; transcript: string; fileName: string; mode: 'podcast'; result: VersionedResult }
+  | { status: 'done'; transcript: string; fileName: string; mode: 'short'; shortResult: VersionedShortResult }
   | { status: 'error'; message: string };
 
 export type RegeneratingField =
   | 'titles' | 'showNotes' | 'chapters' | 'clips'
   | 'telegram' | 'linkedin' | 'instagram' | 'tiktok'
+  | 'takeaway_0' | 'takeaway_1' | 'takeaway_2' | 'takeaway_3' | 'takeaway_4'
+  | 'thumbnailTitle' | 'socialCaption'
   | null;

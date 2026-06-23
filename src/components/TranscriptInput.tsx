@@ -85,11 +85,11 @@ export function TranscriptInput({
           onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
           className={[
             'group flex flex-col items-center justify-center gap-4',
-            'rounded border-2 border-dashed px-8 py-12',
+            'rounded border-2 px-8 py-12',
             'cursor-pointer select-none transition-all duration-200',
             isDragging
-              ? 'border-black/30 bg-black/[0.02] scale-[1.01]'
-              : 'border-black/10 hover:border-black/20',
+              ? 'border-black bg-black/[0.02] scale-[1.01]'
+              : 'border-dashed border-black/10 hover:border-black',
           ].join(' ')}
         >
           {/* Upload icon */}
@@ -98,8 +98,7 @@ export function TranscriptInput({
             'border border-black/08 bg-white',
             'shadow-[0_1px_3px_rgba(0,0,0,0.06)]',
             'transition-all duration-200 ease-out',
-            'group-hover:scale-125 group-hover:rotate-[15deg]',
-            isDragging ? 'scale-110 rotate-[15deg]' : '',
+            isDragging ? 'scale-110' : '',
           ].join(' ')}>
             <span className="nerd-icon text-base text-black/35 select-none">{'\uf093'}</span>
           </div>

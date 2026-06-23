@@ -8,6 +8,7 @@ import {
 import { OutputCard } from './OutputCard'
 import { ClipCard } from './ClipCard'
 import { SocialTabs } from './SocialTabs'
+import { TakeawaysSection } from './TakeawaysSection'
 
 interface ResultsPanelProps {
   result: VersionedResult
@@ -133,6 +134,19 @@ export function ResultsPanel({
           onNavigate={(field, dir) => onNavigate(field, dir)}
           onCommand={(field, cmd) => onCommand(field, cmd)}
           onCustomCommand={onCustomCommand}
+        />
+      </div>
+
+      {/* ── Takeaways ───────────────────────────────────────────────────────── */}
+      <div className="py-6">
+        <TakeawaysSection
+          takeaways={result.takeaways}
+          regeneratingField={regeneratingField}
+          onNavigate={(idx, dir) => onNavigate(`takeaway_${idx}` as NonNullable<RegeneratingField>, dir)}
+          onCommand={(idx, cmd) => onCommand(`takeaway_${idx}` as NonNullable<RegeneratingField>, cmd)}
+          onCustomCommand={onCustomCommand
+            ? (idx, instr) => onCustomCommand(`takeaway_${idx}` as NonNullable<RegeneratingField>, instr)
+            : undefined}
         />
       </div>
 
