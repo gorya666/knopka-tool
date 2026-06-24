@@ -3,7 +3,7 @@
 // just the current output + a modifier instruction.
 // Estimated cost: ~200-500 tokens per call vs ~15,000 for full analysis.
 
-import type { QuickCommand, Takeaway } from '../types/podcast';
+import type { QuickCommand, Takeaway, Clip } from '../types/podcast';
 
 const COMMAND_INSTRUCTIONS: Record<QuickCommand, string> = {
   more_provocative: 'Зроби більш провокативним та сміливим. Додай гостроти, не бійся сильних тверджень.',
@@ -105,6 +105,43 @@ ${titlesText}
 - Повертай ТІЛЬКИ JSON масив з 3 рядками, без пояснень
 
 Формат відповіді: ["назва 1", "назва 2", "назва 3"]`;
+}
+
+export function buildClipsRegeneratePrompt(
+  currentClips: Clip[],
+  transcript: string,
+  customInstruction?: string,
+): string {
+  const currentRanges = currentClips.map((c) => c.timeRange).join(', ');
+
+  const task = customInstruction
+    ? `Завдання від користувача: ${customInstruction}`
+    : 'Знайди 3 ІНШІ моменти для кліпів — не ті, що вже є.';
+
+  return `Ти асистент пост-продакшену для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
+
+${transcriptBlock(transcript)}
+
+Зараз вибрані ці моменти (таймкоди): ${currentRanges}
+
+${task}
+
+Шукай інші сильні моменти в транскрипті — інші таймкоди, інші теми, інший тип:
+- hot_take — провокативна думка чи сильне твердження
+- tip — практична порада, конкретний інсайт
+- quote — влучна цитата, що добре звучить окремо
+
+Правила:
+- Спирайся ТІЛЬКИ на те, що реально є в транскрипті — нічого не вигадуй
+- НЕ повторюй моменти що вже вибрані (${currentRanges})
+- Виправляй помилки транскрипції в excerpt — не копіюй спотворені слова
+- tiktokCaption: короткий чіпкий підпис, українською
+- Стиль Радіо Кнопки: прямо, розумно, без корпоративщини
+
+Повертай ТІЛЬКИ JSON-масив з рівно 3 обʼєктів, без markdown, без преамбули:
+[
+  { "timeRange": "string", "excerpt": "string", "type": "hot_take | tip | quote", "whyItWorks": "string", "tiktokCaption": "string" }
+]`;
 }
 
 export function buildTakeawayRegeneratePrompt(

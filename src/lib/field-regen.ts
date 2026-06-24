@@ -1,6 +1,6 @@
 // Shared field regeneration logic — used by useAnalyze and EpisodeView.
 
-import { buildFieldPrompt, buildTitlesRegeneratePrompt, buildCustomFieldPrompt, buildTakeawayRegeneratePrompt } from './regen-prompt'
+import { buildFieldPrompt, buildTitlesRegeneratePrompt, buildCustomFieldPrompt, buildTakeawayRegeneratePrompt, buildClipsRegeneratePrompt } from './regen-prompt'
 import { callClaude, callClaudeStreaming, extractJSON } from './claude-api'
 import {
   type RegeneratingField,
@@ -43,6 +43,14 @@ export async function runFieldRegen(
     prompt = buildTakeawayRegeneratePrompt(
       JSON.parse(currentValue) as Takeaway,
       command,
+      transcript,
+      customInstruction,
+    )
+  } else if (fieldKey === 'clips') {
+    // Clips return a JSON array — the generic text prompt would make Claude
+    // reply with prose that fails to parse. Always use the dedicated JSON prompt.
+    prompt = buildClipsRegeneratePrompt(
+      JSON.parse(currentValue) as Clip[],
       transcript,
       customInstruction,
     )
