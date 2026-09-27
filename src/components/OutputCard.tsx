@@ -2,9 +2,19 @@ import { useState, type ReactNode } from 'react'
 import { type QuickCommand, COMMAND_LABELS, COMMAND_ICONS } from '@/types/podcast'
 import { ActionLabel } from './ActionLabel'
 
+export interface CopyVariant {
+  label: string
+  text: string
+}
+
 interface OutputCardProps {
   label: string
   copyText: string
+  // When a card has more than one thing worth copying (the shared
+  // Instagram + LinkedIn text), these replace the single copy button.
+  copyVariants?: CopyVariant[]
+  // Small muted note beside the label — used for the calendar day.
+  badge?: string
   history: { current: number; total: number }
   onNavigate: (dir: 'prev' | 'next') => void
   commands: QuickCommand[]
@@ -18,6 +28,8 @@ interface OutputCardProps {
 export function OutputCard({
   label,
   copyText,
+  copyVariants,
+  badge,
   history,
   onNavigate,
   commands,
@@ -27,24 +39,27 @@ export function OutputCard({
   streamingText = '',
   children,
 }: OutputCardProps) {
-  const [copied, setCopied] = useState(false)
+  // Which variant was copied last, so only that button shows feedback.
+  const [copied, setCopied] = useState<string | null>(null)
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [customText, setCustomText] = useState('')
 
-  const handleCopy = async () => {
+  const handleCopy = async (key: string, text: string) => {
     try {
-      await navigator.clipboard.writeText(copyText)
+      await navigator.clipboard.writeText(text)
     } catch {
       const el = document.createElement('textarea')
-      el.value = copyText
+      el.value = text
       document.body.appendChild(el)
       el.select()
       document.execCommand('copy')
       document.body.removeChild(el)
     }
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopied(key)
+    setTimeout(() => setCopied(null), 2000)
   }
+
+  const variants: CopyVariant[] = copyVariants ?? [{ label: 'копіювати', text: copyText }]
 
   const canPrev = history.current > 1
   const canNext = history.current < history.total
@@ -58,10 +73,16 @@ export function OutputCard({
 
   return (
     <div className="animate-fade-up">
-      {/* Header — label + version nav (left) + copy button (right) */}
+      {/* Header — label + version nav (left) + copy buttons (right) */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-medium text-black uppercase tracking-wider">{label}</h2>
+
+          {badge && (
+            <span className="rounded bg-black/05 px-1.5 py-0.5 text-xs text-black/50 shrink-0">
+              {badge}
+            </span>
+          )}
 
           {history.total > 1 && (
             <div className="flex items-center gap-0.5">
@@ -70,7 +91,7 @@ export function OutputCard({
                 disabled={!canPrev || isRegenerating}
                 className="flex items-center justify-center w-6 h-6 rounded text-black/60 hover:text-black hover:bg-black/06 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-100"
               >
-                <span className="nerd-icon text-[10px]">{'\uf053'}</span>
+                <span className="nerd-icon text-[10px]">{''}</span>
               </button>
               <span className="text-xs text-black/60 tabular-nums w-9 text-center">
                 {history.current} / {history.total}
@@ -80,20 +101,25 @@ export function OutputCard({
                 disabled={!canNext || isRegenerating}
                 className="flex items-center justify-center w-6 h-6 rounded text-black/60 hover:text-black hover:bg-black/06 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-100"
               >
-                <span className="nerd-icon text-[10px]">{'\uf054'}</span>
+                <span className="nerd-icon text-[10px]">{''}</span>
               </button>
             </div>
           )}
         </div>
 
-        <ActionLabel
-          icon={copied ? '\uf00c' : '\uf0c5'}
-          onClick={handleCopy}
-          disabled={isRegenerating}
-          className="px-2.5 py-1.5 rounded hover:bg-black/06 transition-colors duration-150 shrink-0"
-        >
-          {copied ? 'скопійовано' : 'копіювати'}
-        </ActionLabel>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {variants.map((variant) => (
+            <ActionLabel
+              key={variant.label}
+              icon={copied === variant.label ? '' : ''}
+              onClick={() => void handleCopy(variant.label, variant.text)}
+              disabled={isRegenerating}
+              className="px-2.5 py-1.5 rounded hover:bg-black/06 transition-colors duration-150 shrink-0"
+            >
+              {copied === variant.label ? 'скопійовано' : variant.label}
+            </ActionLabel>
+          ))}
+        </div>
       </div>
 
       {/* Content */}
@@ -144,7 +170,7 @@ export function OutputCard({
                 className="flex items-center justify-center w-6 h-6 rounded text-black hover:bg-black/06 disabled:opacity-25 disabled:cursor-not-allowed transition-colors duration-150"
               >
                 <span className="nerd-icon text-[11px]">
-                  {showCustomInput ? '\uf00d' : '\uf044'}
+                  {showCustomInput ? '' : ''}
                 </span>
               </button>
             )}

@@ -5,7 +5,8 @@
       "name": "knopka-tool (vite dev)",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "port": 5180,
+      "autoPort": true
     },
     {
       "name": "knopka-tool (vite preview)",

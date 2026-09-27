@@ -7,12 +7,22 @@ import { TranscriptInput } from './components/TranscriptInput'
 import { LoadingState } from './components/LoadingState'
 import { EpisodeCard } from './components/EpisodeCard'
 import { ResultsPanel } from './components/ResultsPanel'
-import { loadEpisodes, saveEpisode, type SavedEpisode } from './lib/history'
-import { runFieldRegen, applyFieldUpdate } from './lib/field-regen'
+import { ShortResultPanel } from './components/ShortResultPanel'
+import { loadEpisodes, saveEpisode, saveShort, updateEpisode, type SavedEpisode } from './lib/history'
+import { runFieldRegen, applyFieldUpdate, applyFieldNavigate, applyPublishedText } from './lib/field-regen'
+import { callClaudeStreaming, plain } from './lib/claude'
+import { SHORT_PROMPT } from './lib/short-prompt'
+import { parseShortResult } from './lib/parser'
 import {
   toVersionedResult,
+  toVersionedShortResult,
+  fromVersionedResult,
   navigate,
+  addVersion,
+  current,
   type VersionedResult,
+  type VersionedShortResult,
+  type ShortResult,
   type QuickCommand,
   type RegeneratingField,
 } from './types/podcast'
@@ -23,7 +33,12 @@ import { ActionLabel } from './components/ActionLabel'
 type ViewMode = { mode: 'home' } | { mode: 'episode'; episode: SavedEpisode }
 
 export default function App() {
-  const { appState, setAppState, regeneratingField, regenStreamText, regenError, analyze, regenerateField, navigateField } = useAnalyze()
+  const {
+    appState, setAppState,
+    regeneratingField, regenStreamText, regenError,
+    analyze, regenerateField, navigateField, setPublishedText, setYoutubeUrl,
+    regenerateShortField, navigateShortField,
+  } = useAnalyze()
   const { transcript, fileName, error, loadFile, clear } = useTranscript()
 
   const [view, setView] = useState<ViewMode>({ mode: 'home' })
@@ -44,33 +59,31 @@ export default function App() {
 
   // ── Auto-save when analysis completes ────────────────────────────────────
   const [lastSavedFileName, setLastSavedFileName] = useState<string | null>(null)
+  const [savedEpisodeId, setSavedEpisodeId] = useState<string | null>(null)
   useEffect(() => {
     if (appState.status !== 'done') return
+    if (appState.fileName === lastSavedFileName) return
 
-    const doneState = appState as Extract<typeof appState, { status: 'done' }>
-    if (doneState.fileName === lastSavedFileName) return
+    const saved = appState.mode === 'short'
+      ? saveShort(appState.fileName, {
+          thumbnailTitle: current(appState.shortResult.thumbnailTitle),
+          socialCaption: current(appState.shortResult.socialCaption),
+        }, appState.transcript)
+      : saveEpisode(appState.fileName, fromVersionedResult(appState.result), appState.transcript)
 
-    const r = doneState.result
-    const flat = {
-      titles: [
-        r.titles.versions[r.titles.currentIndex][0],
-        r.titles.versions[r.titles.currentIndex][1],
-        r.titles.versions[r.titles.currentIndex][2],
-      ] as [string, string, string],
-      showNotes: r.showNotes.versions[r.showNotes.currentIndex],
-      chapters: r.chapters.versions[r.chapters.currentIndex],
-      clips: r.clips.versions[r.clips.currentIndex],
-      social: {
-        telegram: r.social.telegram.versions[r.social.telegram.currentIndex],
-        linkedin: r.social.linkedin.versions[r.social.linkedin.currentIndex],
-        instagram: r.social.instagram.versions[r.social.instagram.currentIndex],
-        tiktok: r.social.tiktok.versions[r.social.tiktok.currentIndex],
-      },
-    }
-    saveEpisode(doneState.fileName, flat, doneState.transcript)
-    setLastSavedFileName(doneState.fileName)
+    setSavedEpisodeId(saved.id)
+    setLastSavedFileName(appState.fileName)
     refreshEpisodes()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.status, lastSavedFileName])
+
+  // ── Keep the saved copy in sync ──────────────────────────────────────────
+  // Regenerations and published-text edits happen after the initial save, so
+  // mirror the live result back into localStorage as it changes.
+  useEffect(() => {
+    if (appState.status !== 'done' || appState.mode !== 'podcast' || !savedEpisodeId) return
+    updateEpisode(savedEpisodeId, fromVersionedResult(appState.result))
+  }, [appState, savedEpisodeId])
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleClear = () => {
@@ -110,15 +123,13 @@ export default function App() {
       }}
     >
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm">
-        <div className="max-w-[680px] mx-auto px-6 py-3">
+      <header>
+        <div className="max-w-[680px] mx-auto px-6 py-3 flex justify-center">
           <button onClick={handleBackHome} className="focus:outline-none">
             <img
               src="/logo.png"
               alt="Radio Knopka"
-              className={[
-                'h-9 w-auto transition-opacity duration-150 hover:opacity-80',
-              ].join(' ')}
+              className="h-[60px] w-auto transition-opacity duration-150 hover:opacity-80"
             />
           </button>
         </div>
@@ -162,13 +173,16 @@ export default function App() {
 
             {/* ANALYZING */}
             {appState.status === 'analyzing' && (
-              <LoadingState streamingText={appState.streamingText} />
+              <LoadingState streamingText={appState.streamingText} phase={appState.phase} />
             )}
 
-            {/* DONE */}
-            {appState.status === 'done' && (
+            {/* DONE — podcast mode */}
+            {appState.status === 'done' && appState.mode === 'podcast' && (
               <div className="space-y-6 animate-fade-up">
-                <ActionLabel icon={'\uf053'} onClick={handleNewEpisode}>назад</ActionLabel>
+                <ActionLabel icon={''} onClick={handleNewEpisode}>назад</ActionLabel>
+                <h1 className="text-xl font-bold text-black leading-snug">
+                  {appState.result.titles.versions[appState.result.titles.currentIndex][0]}
+                </h1>
                 {regenError && (
                   <p className="text-xs text-red-500 font-mono break-all">{regenError}</p>
                 )}
@@ -179,6 +193,33 @@ export default function App() {
                   onNavigate={navigateField}
                   onCommand={(field, cmd) => void regenerateField(field, cmd)}
                   onCustomCommand={(field, instruction) => void regenerateField(field, 'regenerate', instruction)}
+                  onPublishedChange={setPublishedText}
+                  onYoutubeUrlChange={setYoutubeUrl}
+                />
+              </div>
+            )}
+
+            {/* DONE — short mode */}
+            {appState.status === 'done' && appState.mode === 'short' && (
+              <div className="space-y-6 animate-fade-up">
+                <ActionLabel icon={''} onClick={handleNewEpisode}>назад</ActionLabel>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-black/30 bg-black/05 rounded px-2 py-0.5">шортс</span>
+                  <span className="text-xs text-black/30">{appState.fileName}</span>
+                </div>
+                {regenError && (
+                  <p className="text-xs text-red-500 font-mono break-all">{regenError}</p>
+                )}
+                <ShortResultPanel
+                  shortResult={appState.shortResult}
+                  regeneratingField={
+                    regeneratingField === 'thumbnailTitle' ? 'thumbnailTitle'
+                    : regeneratingField === 'socialCaption' ? 'socialCaption'
+                    : null
+                  }
+                  regenStreamText={regenStreamText}
+                  onRegenerate={(field) => void regenerateShortField(field)}
+                  onNavigate={navigateShortField}
                 />
               </div>
             )}
@@ -207,7 +248,7 @@ export default function App() {
   )
 }
 
-// ─── Episode detail view (loaded from history, local nav state) ───────────────
+// ─── Episode detail view ──────────────────────────────────────────────────────
 
 function EpisodeView({
   episode,
@@ -218,43 +259,7 @@ function EpisodeView({
   onBack: () => void
   onDeleted: () => void
 }) {
-  const [result, setResult] = useState<VersionedResult>(() =>
-    toVersionedResult(episode.result)
-  )
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [regenField, setRegenField] = useState<RegeneratingField>(null)
-  const [regenStreamText, setRegenStreamText] = useState<string>('')
-  const [regenError, setRegenError] = useState<string | null>(null)
-
-  const handleNavigate = (field: NonNullable<RegeneratingField>, dir: 'prev' | 'next') => {
-    setResult((prev) => {
-      switch (field) {
-        case 'titles':    return { ...prev, titles: navigate(prev.titles, dir) }
-        case 'showNotes': return { ...prev, showNotes: navigate(prev.showNotes, dir) }
-        case 'chapters':  return { ...prev, chapters: navigate(prev.chapters, dir) }
-        case 'clips':     return { ...prev, clips: navigate(prev.clips, dir) }
-        case 'telegram':  return { ...prev, social: { ...prev.social, telegram: navigate(prev.social.telegram, dir) } }
-        case 'linkedin':  return { ...prev, social: { ...prev.social, linkedin: navigate(prev.social.linkedin, dir) } }
-        case 'instagram': return { ...prev, social: { ...prev.social, instagram: navigate(prev.social.instagram, dir) } }
-        case 'tiktok':    return { ...prev, social: { ...prev.social, tiktok: navigate(prev.social.tiktok, dir) } }
-      }
-    })
-  }
-
-  const handleCommand = async (field: NonNullable<RegeneratingField>, cmd: QuickCommand) => {
-    setRegenField(field)
-    setRegenStreamText('')
-    setRegenError(null)
-    try {
-      const raw = await runFieldRegen(field, result, cmd, episode.transcript, setRegenStreamText)
-      setResult((prev) => applyFieldUpdate(prev, field, raw))
-    } catch (err) {
-      setRegenError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRegenField(null)
-      setRegenStreamText('')
-    }
-  }
 
   const handleDelete = () => {
     deleteEpisode(episode.id)
@@ -265,44 +270,19 @@ function EpisodeView({
   return (
     <>
       <div className="space-y-6 animate-fade-up">
-        <ActionLabel icon={'\uf053'} onClick={onBack}>назад</ActionLabel>
-
-        {/* Episode title */}
+        <ActionLabel icon={''} onClick={onBack}>назад</ActionLabel>
         <h1 className="text-xl font-bold text-black leading-snug">{episode.title}</h1>
 
-        {regenError && (
-          <p className="text-xs text-red-500 font-mono break-all">{regenError}</p>
+        {episode.mode === 'short' ? (
+          <ShortEpisodeBody episode={episode} />
+        ) : (
+          <PodcastEpisodeBody episode={episode} />
         )}
-
-        <ResultsPanel
-          result={result}
-          regeneratingField={regenField}
-          regenStreamText={regenStreamText}
-          onNavigate={handleNavigate}
-          onCommand={handleCommand}
-          onCustomCommand={(field, instruction) => {
-            const handler = async () => {
-              setRegenField(field)
-              setRegenStreamText('')
-              setRegenError(null)
-              try {
-                const raw = await runFieldRegen(field, result, 'regenerate', episode.transcript, setRegenStreamText, instruction)
-                setResult((prev) => applyFieldUpdate(prev, field, raw))
-              } catch (err) {
-                setRegenError(err instanceof Error ? err.message : String(err))
-              } finally {
-                setRegenField(null)
-                setRegenStreamText('')
-              }
-            }
-            void handler()
-          }}
-        />
 
         {/* Delete section */}
         <div className="pt-4 pb-2">
           <ActionLabel
-            icon={'\uf1f8'}
+            icon={''}
             variant="danger"
             onClick={() => setShowDeleteConfirm(true)}
           >
@@ -346,6 +326,140 @@ function EpisodeView({
   )
 }
 
+// ─── Podcast episode body ─────────────────────────────────────────────────────
+
+function PodcastEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode: 'podcast' }> }) {
+  const [result, setResult] = useState<VersionedResult>(() =>
+    toVersionedResult(episode.result)
+  )
+  const [regenField, setRegenField] = useState<RegeneratingField>(null)
+  const [regenStreamText, setRegenStreamText] = useState<string>('')
+  const [regenError, setRegenError] = useState<string | null>(null)
+
+  // Mirror edits made while re-opening a saved episode back into storage.
+  useEffect(() => {
+    updateEpisode(episode.id, fromVersionedResult(result))
+  }, [result, episode.id])
+
+  const handleNavigate = (field: NonNullable<RegeneratingField>, dir: 'prev' | 'next') => {
+    setResult((prev) => applyFieldNavigate(prev, field, dir))
+  }
+
+  const handlePublishedChange = (postId: string, text: string) => {
+    setResult((prev) => applyPublishedText(prev, postId, text))
+  }
+
+  const handleCommand = async (field: NonNullable<RegeneratingField>, cmd: QuickCommand) => {
+    setRegenField(field)
+    setRegenStreamText('')
+    setRegenError(null)
+    try {
+      const raw = await runFieldRegen(field, result, cmd, episode.transcript, setRegenStreamText)
+      setResult(await applyFieldUpdate(result, field, raw))
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRegenField(null)
+      setRegenStreamText('')
+    }
+  }
+
+  return (
+    <>
+      {regenError && (
+        <p className="text-xs text-red-500 font-mono break-all">{regenError}</p>
+      )}
+      <ResultsPanel
+        result={result}
+        regeneratingField={regenField}
+        regenStreamText={regenStreamText}
+        onNavigate={handleNavigate}
+        onCommand={handleCommand}
+        onCustomCommand={(field, instruction) => {
+          const handler = async () => {
+            setRegenField(field)
+            setRegenStreamText('')
+            setRegenError(null)
+            try {
+              const raw = await runFieldRegen(field, result, 'regenerate', episode.transcript, setRegenStreamText, instruction)
+              setResult(await applyFieldUpdate(result, field, raw))
+            } catch (err) {
+              setRegenError(err instanceof Error ? err.message : String(err))
+            } finally {
+              setRegenField(null)
+              setRegenStreamText('')
+            }
+          }
+          void handler()
+        }}
+        onPublishedChange={handlePublishedChange}
+        onYoutubeUrlChange={(url) => setResult((prev) => ({ ...prev, youtubeUrl: url }))}
+      />
+    </>
+  )
+}
+
+// ─── Short episode body ───────────────────────────────────────────────────────
+
+function ShortEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode: 'short' }> }) {
+  const [shortResult, setShortResult] = useState<VersionedShortResult>(() =>
+    toVersionedShortResult(episode.shortResult)
+  )
+  const [regenField, setRegenField] = useState<'thumbnailTitle' | 'socialCaption' | null>(null)
+  const [regenStreamText, setRegenStreamText] = useState<string>('')
+  const [regenError, setRegenError] = useState<string | null>(null)
+
+  const handleRegenerate = async (field: keyof ShortResult) => {
+    setRegenField(field)
+    setRegenStreamText('')
+    setRegenError(null)
+    try {
+      const raw = await callClaudeStreaming(
+        [plain(episode.transcript)],
+        [plain(SHORT_PROMPT)],
+        500,
+        (text) => setRegenStreamText(text),
+      )
+      const fresh = parseShortResult(raw)
+      setShortResult((prev) => ({
+        thumbnailTitle: field === 'thumbnailTitle'
+          ? addVersion(prev.thumbnailTitle, fresh.thumbnailTitle)
+          : prev.thumbnailTitle,
+        socialCaption: field === 'socialCaption'
+          ? addVersion(prev.socialCaption, fresh.socialCaption)
+          : prev.socialCaption,
+      }))
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRegenField(null)
+      setRegenStreamText('')
+    }
+  }
+
+  const handleNavigate = (field: keyof ShortResult, dir: 'prev' | 'next') => {
+    setShortResult((prev) => ({
+      ...prev,
+      [field]: navigate(prev[field], dir),
+    }))
+  }
+
+  return (
+    <>
+      {regenError && (
+        <p className="text-xs text-red-500 font-mono break-all">{regenError}</p>
+      )}
+      <ShortResultPanel
+        shortResult={shortResult}
+        regeneratingField={regenField}
+        regenStreamText={regenStreamText}
+        onRegenerate={(field) => void handleRegenerate(field)}
+        onNavigate={handleNavigate}
+      />
+    </>
+  )
+}
+
 // ─── Episode history section ──────────────────────────────────────────────────
 
 function EpisodeHistory({
@@ -373,4 +487,3 @@ function EpisodeHistory({
     </div>
   )
 }
-

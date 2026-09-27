@@ -14,4 +14,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // Honour an assigned PORT so the dev server can start alongside other
+  // projects already holding 5173.
+  server: {
+    port: Number(process.env.PORT) || 5173,
+  },
 })
