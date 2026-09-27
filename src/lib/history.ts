@@ -89,6 +89,15 @@ export function saveShort(
   return episode
 }
 
+// Overwrite the stored result of an already-saved episode, keeping its place in
+// the list. Used when the user edits a post's published text after the fact.
+export function updateEpisode(id: string, result: AnalysisResult): void {
+  const updated = loadEpisodes().map((ep) =>
+    ep.id === id && ep.mode === 'podcast' ? { ...ep, result } : ep,
+  )
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+}
+
 function _persist(episode: SavedEpisode): void {
   const existing = loadEpisodes()
   const updated = [episode, ...existing].slice(0, MAX_SAVED)

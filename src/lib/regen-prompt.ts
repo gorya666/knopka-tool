@@ -1,9 +1,14 @@
-// Prompts for per-field regeneration.
-// These are MUCH cheaper than full analysis — no transcript needed,
-// just the current output + a modifier instruction.
-// Estimated cost: ~200-500 tokens per call vs ~15,000 for full analysis.
+// Task blocks for per-field regeneration.
+//
+// These are appended AFTER the cached transcript block (see prompt.ts), so they
+// never carry the transcript themselves — and the full transcript is always
+// available, because it is a cache read rather than a fresh cost.
+//
+// The voice guide already rides along in the system prompt, so these blocks
+// point at its sections instead of restating the rules.
 
-import type { QuickCommand, Takeaway, Clip } from '../types/podcast';
+import { todayLine } from './prompt';
+import { POST_FORMAT_LABELS, type QuickCommand, type ClipSuggestion, type PostFormat } from '../types/podcast';
 
 const COMMAND_INSTRUCTIONS: Record<QuickCommand, string> = {
   more_provocative: 'Зроби більш провокативним та сміливим. Додай гостроти, не бійся сильних тверджень.',
@@ -16,163 +21,153 @@ const COMMAND_INSTRUCTIONS: Record<QuickCommand, string> = {
   regenerate:       'Повністю перепиши з нуля. Інший підхід, інші формулювання.',
 };
 
-const TRANSCRIPT_LIMIT = 8000
+const COMMON_RULES = `- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
+- Транскрипт містить помилки розпізнавання — виправляй спотворені слова, імена і назви
+- Дотримуйся голосу, форматів і стоп-листа з інструкції`;
 
-function transcriptBlock(transcript: string): string {
-  const trimmed = transcript.slice(0, TRANSCRIPT_LIMIT)
-  const suffix = transcript.length > TRANSCRIPT_LIMIT ? '\n\n[транскрипт скорочено]' : ''
-  return `## Транскрипт епізоду\n${trimmed}${suffix}`
+const TEXT_ONLY = '- Повертай ТІЛЬКИ новий текст — без пояснень, без преамбули, без лапок навколо, без markdown-огорожі';
+
+function instructionFor(command: QuickCommand, custom?: string): string {
+  return custom ?? COMMAND_INSTRUCTIONS[command];
 }
 
-export function buildCustomFieldPrompt(
-  fieldName: string,
-  currentValue: string,
-  customInstruction: string,
-  transcript: string,
-): string {
-  return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
-
-${transcriptBlock(transcript)}
-
-Поточний варіант поля "${fieldName}":
----
-${currentValue}
----
-
-Завдання від користувача: ${customInstruction}
-
-Правила:
-- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
-- Транскрипт записаний автоматично і містить помилки — виправляй спотворені дієслова, назви, терміни (напр. "дизайнев" → "дизайнив")
-- Зберігай стиль Радіо Кнопки: розмовний, розумний, без корпоративщини
-- Мова: українська (можна міксувати з англійськими термінами як у дизайн-середовищі)
-- Повертай ТІЛЬКИ новий текст для цього поля — без пояснень, без преамбули, без лапок навколо
-
-Новий варіант:`
+function head(): string {
+  return `# ЗАВДАННЯ\n\n${todayLine()}\n`;
 }
 
-export function buildFieldPrompt(
-  fieldName: string,
+// ─── Plain-text fields ────────────────────────────────────────────────────────
+
+export function buildDescriptionRegeneratePrompt(
   currentValue: string,
   command: QuickCommand,
-  transcript: string,
+  custom?: string,
 ): string {
-  const instruction = COMMAND_INSTRUCTIONS[command];
-
-  return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
-
-${transcriptBlock(transcript)}
-
-Поточний варіант поля "${fieldName}":
+  return `${head()}
+Поточний опис для YouTube:
 ---
 ${currentValue}
 ---
 
-Завдання: ${instruction}
+Завдання: ${instructionFor(command, custom)}
 
 Правила:
-- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
-- Транскрипт записаний автоматично і містить помилки — виправляй спотворені дієслова, назви, терміни (напр. "дизайнев" → "дизайнив")
-- Зберігай стиль Радіо Кнопки: розмовний, розумний, без корпоративщини
-- Мова: українська (можна міксувати з англійськими термінами як у дизайн-середовищі)
-- Повертай ТІЛЬКИ новий текст для цього поля — без пояснень, без преамбули, без лапок навколо
+${COMMON_RULES}
+- Структура — за розділом «YouTube: опис», пункти 1–4
+- Чаптери і футер НЕ пиши — інструмент додає їх сам
+${TEXT_ONLY}
 
-Новий варіант:`;
+Новий опис:`
 }
+
+export function buildPostRegeneratePrompt(
+  post: { format: PostFormat; text: string },
+  command: QuickCommand,
+  custom?: string,
+): string {
+  const top5Note = post.format === 'top5_ig_linkedin'
+    ? `\n- Формат — за розділом «Instagram і LinkedIn — топ-5 думок»: перший рядок про що розмова, далі пʼять пунктів 1.–5. з різних частин епізоду
+- Закінчення НЕ пиши — інструмент підставляє його сам для кожної платформи
+- ЖОДНОЇ розмітки: ніяких ** і _`
+    : ''
+
+  return `${head()}
+Поточний пост (формат — ${POST_FORMAT_LABELS[post.format]}):
+---
+${post.text}
+---
+
+Завдання: ${instructionFor(command, custom)}
+
+Правила:
+${COMMON_RULES}
+- Формат і призначення поста не міняй — це так само ${POST_FORMAT_LABELS[post.format]}
+- Футер Monobase не пиши — його додає інструмент${top5Note}
+${TEXT_ONLY}
+
+Новий пост:`
+}
+
+// ─── JSON fields ──────────────────────────────────────────────────────────────
 
 export function buildTitlesRegeneratePrompt(
   currentTitles: string[],
   command: QuickCommand,
-  transcript: string,
+  guest?: string,
+  custom?: string,
 ): string {
-  const instruction = COMMAND_INSTRUCTIONS[command];
-  const titlesText = currentTitles.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  const guestRule = guest
+    ? `- Гостьовий епізод: у кінці назви « | ${guest}»`
+    : '- Епізод без гостя: НЕ додавай « | » з іменами, імена ведучих у назві не пишемо'
 
-  return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
+  return `${head()}
+Поточні варіанти назви епізоду:
+${currentTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
-${transcriptBlock(transcript)}
-
-Поточні варіанти назв:
-${titlesText}
-
-Завдання: ${instruction}
+Завдання: ${instructionFor(command, custom)}
 
 Правила:
-- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
-- Стиль: або провокативне твердження/питання, або "Тема · Ім'я Гостя" для гостьових епізодів
-- До 65 символів
-- Без clickbait — назва відображає реальний зміст
-- Повертай ТІЛЬКИ JSON масив з 3 рядками, без пояснень
+${COMMON_RULES}
+- Рівно 5 варіантів, за розділом «YouTube: назва епізоду». Уважно прочитай приклади поганих назв
+${guestRule}
+- Назва каже, про що епізод. Історії, анекдоти й випадкові цифри з середини розмови — не для назви
+- Жодних років і цифр, яких немає в транскрипті
+- Повертай ТІЛЬКИ JSON-масив з 5 рядків, без markdown, без преамбули
 
-Формат відповіді: ["назва 1", "назва 2", "назва 3"]`;
+Формат відповіді: ["назва 1", "назва 2", "назва 3", "назва 4", "назва 5"]`
+}
+
+export function buildCoverTitlesRegeneratePrompt(
+  currentTitles: string[],
+  command: QuickCommand,
+  custom?: string,
+): string {
+  return `${head()}
+Поточні заголовки на обкладинку:
+${currentTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+Завдання: ${instructionFor(command, custom)}
+
+Правила:
+${COMMON_RULES}
+- Рівно 3 варіанти, за розділом «Заголовок на обкладинку»
+- Обкладинка каже, про що епізод. Смішна історія чи факт із середини розмови — не заголовок
+- Про ту саму тему, що й назва, але коротше і не дослівно
+- Повертай ТІЛЬКИ JSON-масив з 3 рядків, без markdown, без преамбули
+
+Формат відповіді: ["заголовок 1", "заголовок 2", "заголовок 3"]`
+}
+
+export function buildChaptersRegeneratePrompt(custom?: string): string {
+  return `${head()}
+${custom ?? 'Перескладі чаптери епізоду з нуля.'}
+
+Правила:
+${COMMON_RULES}
+- За розділом «YouTube: чаптери». Перший — "00:00 Інтро", 8–12 на годину
+- Кожен чаптер — окрема тема, без повторів. Назва 2–6 слів, конкретна
+- Повертай ТІЛЬКИ JSON-масив, без markdown, без преамбули
+
+Формат відповіді: [{ "time": "00:00", "title": "Інтро" }]`
 }
 
 export function buildClipsRegeneratePrompt(
-  currentClips: Clip[],
-  transcript: string,
-  customInstruction?: string,
+  currentClips: ClipSuggestion[],
+  custom?: string,
 ): string {
-  const currentRanges = currentClips.map((c) => c.timeRange).join(', ');
+  const used = currentClips.map((c) => c.start).join(', ')
 
-  const task = customInstruction
-    ? `Завдання від користувача: ${customInstruction}`
-    : 'Знайди 3 ІНШІ моменти для кліпів — не ті, що вже є.';
+  return `${head()}
+Зараз запропоновані кліпи на таймкодах: ${used}
 
-  return `Ти асистент пост-продакшену для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
-
-${transcriptBlock(transcript)}
-
-Зараз вибрані ці моменти (таймкоди): ${currentRanges}
-
-${task}
-
-Шукай інші сильні моменти в транскрипті — інші таймкоди, інші теми, інший тип:
-- hot_take — провокативна думка чи сильне твердження
-- tip — практична порада, конкретний інсайт
-- quote — влучна цитата, що добре звучить окремо
+${custom ?? 'Запропонуй 3 ІНШІ моменти для кліпів — не ті, що вже є.'}
 
 Правила:
-- Спирайся ТІЛЬКИ на те, що реально є в транскрипті — нічого не вигадуй
-- НЕ повторюй моменти що вже вибрані (${currentRanges})
-- Виправляй помилки транскрипції в excerpt — не копіюй спотворені слова
-- tiktokCaption: короткий чіпкий підпис, українською
-- Стиль Радіо Кнопки: прямо, розумно, без корпоративщини
+${COMMON_RULES}
+- За розділом «Пропозиції кліпів»
+- НЕ повторюй таймкоди, що вже є (${used})
+- end — на 30–60 секунд пізніше за start
+- Повертай ТІЛЬКИ JSON-масив з 3 обʼєктів, без markdown, без преамбули
 
-Повертай ТІЛЬКИ JSON-масив з рівно 3 обʼєктів, без markdown, без преамбули:
-[
-  { "timeRange": "string", "excerpt": "string", "type": "hot_take | tip | quote", "whyItWorks": "string", "tiktokCaption": "string" }
-]`;
+Формат відповіді: [{ "start": "23:39", "end": "24:30", "about": "string", "why": "string" }]`
 }
 
-export function buildTakeawayRegeneratePrompt(
-  current: Takeaway,
-  command: QuickCommand,
-  transcript: string,
-  customInstruction?: string,
-): string {
-  const instruction = customInstruction ?? COMMAND_INSTRUCTIONS[command];
-
-  return `Ти редактор контенту для подкасту Радіо Кнопка (українськомовний UI/UX подкаст).
-
-${transcriptBlock(transcript)}
-
-Поточний ключовий висновок:
-- linkedin: ${current.linkedin}
-- instagram: ${current.instagram}
-
-Завдання: ${instruction}
-
-Перепиши цей висновок у ДВОХ форматах:
-- linkedin — розгорнутий абзац (2-4 речення) у стилі "my biggest takeaways": інсайт → конкретний приклад/деталь з розмови → чому це важливо. Без "висновок:", без зайвих вступів.
-- instagram — той самий висновок одним коротким реченням (максимум два), суть без деталей.
-
-Правила:
-- Спирайся ТІЛЬКИ на те, що є в транскрипті — нічого не вигадуй
-- Виправляй помилки транскрипції (напр. "дизайнев" → "дизайнив")
-- Стиль Радіо Кнопки: прямо, розумно, без корпоративщини
-- Англійські терміни лишай англійською (UX, design system, AI, Figma)
-- ВАЖЛИВО: це готовий пост для LinkedIn — пиши з НОРМАЛЬНОЇ капіталізації (речення з великої літери, власні назви з великої). НЕ нижній регістр.
-- Повертай ТІЛЬКИ JSON, без markdown, без преамбули
-
-Формат відповіді: { "linkedin": "string", "instagram": "string" }`;
-}

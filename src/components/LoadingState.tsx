@@ -1,28 +1,33 @@
+import { PHASE_LABELS, type AnalyzePhase } from '@/types/podcast'
+
 interface LoadingStateProps {
   streamingText?: string
+  phase?: AnalyzePhase
 }
 
-const ESTIMATED_CHARS   = 7000   // ~avg full JSON response length
-const ESTIMATED_SECONDS = 22     // ~avg time for Claude to complete
+// Rough payload size per streaming pass, used to fill the bar. The lint pass
+// makes many small parallel calls and streams nothing, so it runs indeterminate.
+const ESTIMATED_CHARS: Record<AnalyzePhase, number> = {
+  analysis: 5000,
+  youtube:  3000,
+  social:   6000,
+  lint:     0,
+}
 
-const PHASES = [
-  { threshold: 0,  label: 'зчитую транскрипт...' },
-  { threshold: 12, label: 'генерую назви та розділи...' },
-  { threshold: 32, label: 'пишу нотатки шоу...' },
-  { threshold: 58, label: 'готую пости для соцмереж...' },
-  { threshold: 78, label: 'добираю ключові ідеї...' },
-  { threshold: 90, label: 'майже готово...' },
-]
+// Each pass owns a slice of the bar, so it always moves forward overall.
+const PHASE_RANGE: Record<AnalyzePhase, [number, number]> = {
+  analysis: [0, 35],
+  youtube:  [35, 60],
+  social:   [60, 90],
+  lint:     [90, 97],
+}
 
-export function LoadingState({ streamingText = '' }: LoadingStateProps) {
-  const progress = streamingText.length > 0
-    ? Math.min((streamingText.length / ESTIMATED_CHARS) * 100, 95)
-    : 2
+export function LoadingState({ streamingText = '', phase = 'analysis' }: LoadingStateProps) {
+  const [from, to] = PHASE_RANGE[phase]
+  const estimated = ESTIMATED_CHARS[phase]
 
-  const elapsed   = streamingText.length / (ESTIMATED_CHARS / ESTIMATED_SECONDS)
-  const remaining = Math.max(0, Math.ceil(ESTIMATED_SECONDS - elapsed))
-
-  const phase = [...PHASES].reverse().find(p => progress >= p.threshold)?.label ?? PHASES[0].label
+  const within = estimated > 0 ? Math.min(streamingText.length / estimated, 1) : 0.5
+  const progress = from + (to - from) * within
 
   return (
     <div className="flex flex-col items-center gap-7 pt-[200px]">
@@ -35,13 +40,12 @@ export function LoadingState({ streamingText = '' }: LoadingStateProps) {
       </div>
 
       {/* Phase label */}
-      <p className="text-sm text-black/50">{phase}</p>
+      <p className="text-sm text-black/50">{PHASE_LABELS[phase]}...</p>
 
-      {/* Progress bar + time */}
+      {/* Progress bar */}
       <div className="w-full space-y-1.5">
         <div className="flex justify-between text-xs text-black/30 tabular-nums">
           <span>{Math.round(progress)}%</span>
-          {remaining > 1 && <span>~{remaining}с</span>}
         </div>
         <div className="w-full h-[3px] bg-black/08 rounded-full overflow-hidden">
           <div

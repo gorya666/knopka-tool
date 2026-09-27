@@ -8,21 +8,21 @@ import { LoadingState } from './components/LoadingState'
 import { EpisodeCard } from './components/EpisodeCard'
 import { ResultsPanel } from './components/ResultsPanel'
 import { ShortResultPanel } from './components/ShortResultPanel'
-import { loadEpisodes, saveEpisode, saveShort, type SavedEpisode } from './lib/history'
-import { runFieldRegen, applyFieldUpdate } from './lib/field-regen'
-import { callClaudeStreaming } from './lib/claude'
+import { loadEpisodes, saveEpisode, saveShort, updateEpisode, type SavedEpisode } from './lib/history'
+import { runFieldRegen, applyFieldUpdate, applyFieldNavigate, applyPublishedText } from './lib/field-regen'
+import { callClaudeStreaming, plain } from './lib/claude'
 import { SHORT_PROMPT } from './lib/short-prompt'
 import { parseShortResult } from './lib/parser'
 import {
   toVersionedResult,
   toVersionedShortResult,
+  fromVersionedResult,
   navigate,
   addVersion,
   current,
   type VersionedResult,
   type VersionedShortResult,
   type ShortResult,
-  type Takeaways,
   type QuickCommand,
   type RegeneratingField,
 } from './types/podcast'
@@ -36,7 +36,7 @@ export default function App() {
   const {
     appState, setAppState,
     regeneratingField, regenStreamText, regenError,
-    analyze, regenerateField, navigateField,
+    analyze, regenerateField, navigateField, setPublishedText, setYoutubeUrl,
     regenerateShortField, navigateShortField,
   } = useAnalyze()
   const { transcript, fileName, error, loadFile, clear } = useTranscript()
@@ -59,42 +59,31 @@ export default function App() {
 
   // ── Auto-save when analysis completes ────────────────────────────────────
   const [lastSavedFileName, setLastSavedFileName] = useState<string | null>(null)
+  const [savedEpisodeId, setSavedEpisodeId] = useState<string | null>(null)
   useEffect(() => {
     if (appState.status !== 'done') return
     if (appState.fileName === lastSavedFileName) return
 
-    if (appState.mode === 'short') {
-      const sr = appState.shortResult
-      saveShort(appState.fileName, {
-        thumbnailTitle: current(sr.thumbnailTitle),
-        socialCaption: current(sr.socialCaption),
-      }, appState.transcript)
-    } else {
-      const r = appState.result
-      const flat = {
-        titles: [
-          r.titles.versions[r.titles.currentIndex][0],
-          r.titles.versions[r.titles.currentIndex][1],
-          r.titles.versions[r.titles.currentIndex][2],
-        ] as [string, string, string],
-        showNotes: r.showNotes.versions[r.showNotes.currentIndex],
-        chapters: r.chapters.versions[r.chapters.currentIndex],
-        clips: r.clips.versions[r.clips.currentIndex],
-        social: {
-          telegram: r.social.telegram.versions[r.social.telegram.currentIndex],
-          linkedin: r.social.linkedin.versions[r.social.linkedin.currentIndex],
-          instagram: r.social.instagram.versions[r.social.instagram.currentIndex],
-          tiktok: r.social.tiktok.versions[r.social.tiktok.currentIndex],
-        },
-        takeaways: r.takeaways.map(h => h.versions[h.currentIndex]) as Takeaways,
-      }
-      saveEpisode(appState.fileName, flat, appState.transcript)
-    }
+    const saved = appState.mode === 'short'
+      ? saveShort(appState.fileName, {
+          thumbnailTitle: current(appState.shortResult.thumbnailTitle),
+          socialCaption: current(appState.shortResult.socialCaption),
+        }, appState.transcript)
+      : saveEpisode(appState.fileName, fromVersionedResult(appState.result), appState.transcript)
 
+    setSavedEpisodeId(saved.id)
     setLastSavedFileName(appState.fileName)
     refreshEpisodes()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState.status, lastSavedFileName])
+
+  // ── Keep the saved copy in sync ──────────────────────────────────────────
+  // Regenerations and published-text edits happen after the initial save, so
+  // mirror the live result back into localStorage as it changes.
+  useEffect(() => {
+    if (appState.status !== 'done' || appState.mode !== 'podcast' || !savedEpisodeId) return
+    updateEpisode(savedEpisodeId, fromVersionedResult(appState.result))
+  }, [appState, savedEpisodeId])
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleClear = () => {
@@ -184,7 +173,7 @@ export default function App() {
 
             {/* ANALYZING */}
             {appState.status === 'analyzing' && (
-              <LoadingState streamingText={appState.streamingText} />
+              <LoadingState streamingText={appState.streamingText} phase={appState.phase} />
             )}
 
             {/* DONE — podcast mode */}
@@ -204,6 +193,8 @@ export default function App() {
                   onNavigate={navigateField}
                   onCommand={(field, cmd) => void regenerateField(field, cmd)}
                   onCustomCommand={(field, instruction) => void regenerateField(field, 'regenerate', instruction)}
+                  onPublishedChange={setPublishedText}
+                  onYoutubeUrlChange={setYoutubeUrl}
                 />
               </div>
             )}
@@ -345,28 +336,17 @@ function PodcastEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode
   const [regenStreamText, setRegenStreamText] = useState<string>('')
   const [regenError, setRegenError] = useState<string | null>(null)
 
+  // Mirror edits made while re-opening a saved episode back into storage.
+  useEffect(() => {
+    updateEpisode(episode.id, fromVersionedResult(result))
+  }, [result, episode.id])
+
   const handleNavigate = (field: NonNullable<RegeneratingField>, dir: 'prev' | 'next') => {
-    setResult((prev) => {
-      switch (field) {
-        case 'titles':    return { ...prev, titles: navigate(prev.titles, dir) }
-        case 'showNotes': return { ...prev, showNotes: navigate(prev.showNotes, dir) }
-        case 'chapters':  return { ...prev, chapters: navigate(prev.chapters, dir) }
-        case 'clips':     return { ...prev, clips: navigate(prev.clips, dir) }
-        case 'telegram':  return { ...prev, social: { ...prev.social, telegram: navigate(prev.social.telegram, dir) } }
-        case 'linkedin':  return { ...prev, social: { ...prev.social, linkedin: navigate(prev.social.linkedin, dir) } }
-        case 'instagram': return { ...prev, social: { ...prev.social, instagram: navigate(prev.social.instagram, dir) } }
-        case 'tiktok':    return { ...prev, social: { ...prev.social, tiktok: navigate(prev.social.tiktok, dir) } }
-        default: {
-          if ((field as string).startsWith('takeaway_')) {
-            const idx = parseInt((field as string).split('_')[1], 10)
-            const next = [...prev.takeaways] as typeof prev.takeaways
-            next[idx] = navigate(prev.takeaways[idx], dir)
-            return { ...prev, takeaways: next }
-          }
-          return prev
-        }
-      }
-    })
+    setResult((prev) => applyFieldNavigate(prev, field, dir))
+  }
+
+  const handlePublishedChange = (postId: string, text: string) => {
+    setResult((prev) => applyPublishedText(prev, postId, text))
   }
 
   const handleCommand = async (field: NonNullable<RegeneratingField>, cmd: QuickCommand) => {
@@ -375,8 +355,7 @@ function PodcastEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode
     setRegenError(null)
     try {
       const raw = await runFieldRegen(field, result, cmd, episode.transcript, setRegenStreamText)
-      const updated = applyFieldUpdate(result, field, raw)
-      setResult(updated)
+      setResult(await applyFieldUpdate(result, field, raw))
     } catch (err) {
       setRegenError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -403,8 +382,7 @@ function PodcastEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode
             setRegenError(null)
             try {
               const raw = await runFieldRegen(field, result, 'regenerate', episode.transcript, setRegenStreamText, instruction)
-              const updated = applyFieldUpdate(result, field, raw)
-              setResult(updated)
+              setResult(await applyFieldUpdate(result, field, raw))
             } catch (err) {
               setRegenError(err instanceof Error ? err.message : String(err))
             } finally {
@@ -414,6 +392,8 @@ function PodcastEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode
           }
           void handler()
         }}
+        onPublishedChange={handlePublishedChange}
+        onYoutubeUrlChange={(url) => setResult((prev) => ({ ...prev, youtubeUrl: url }))}
       />
     </>
   )
@@ -435,8 +415,8 @@ function ShortEpisodeBody({ episode }: { episode: Extract<SavedEpisode, { mode: 
     setRegenError(null)
     try {
       const raw = await callClaudeStreaming(
-        [{ role: 'user', content: episode.transcript }],
-        SHORT_PROMPT,
+        [plain(episode.transcript)],
+        [plain(SHORT_PROMPT)],
         500,
         (text) => setRegenStreamText(text),
       )
